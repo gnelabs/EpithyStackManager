@@ -1,0 +1,79 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SAM-based cloudformation stack manager for pure SAM applications.
+
+Globals:
+  Function:
+    #Documentation and other DeploymentPreference Types can be found here: https://github.com/awslabs/serverless-application-model/blob/master/docs/safe_lambda_deployments.rst
+    AutoPublishAlias: live
+    DeploymentPreference:
+      Type: AllAtOnce
+  Api:
+    BinaryMediaTypes:
+      #The ~1 will be replaced with / when deployed
+      - '*~1*'
+
+Outputs:
+  StackManagerApiEndpoint:
+    Description: "API Gateway endpoint URL for Prod stage for Stack Manager function"
+    Value: {'Fn::Sub': 'https://${StackManagerWebsiteApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/'}
+  StackArn:
+    Description: Use this as the stack_arn in your cloud_formation_deployment_stack override.
+    Value: {Ref: 'AWS::StackId'}
+
+Parameters:
+  AttachLambdaFunctionToVPC: { Type: String, Default: 'false', AllowedValues: ['true', 'false']}
+  Stage: {Type: String, Default: 'prod'}
+  AdminEmail: {Type: String, Default: 'prod'}
+
+Conditions:
+  RunLambdaInVPC:
+    Fn::Equals: [ {Ref: AttachLambdaFunctionToVPC}, "true"]
+  IsProd:
+    Fn::Equals:
+      - Ref: Stage
+      - prod
+
+Resources:
+  #API gateway configuration. Uses Cognito by default.
+  StackManagerWebsiteApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors: "'*'"
+      Auth:
+        DefaultAuthorizer: EpithyStackManagerCognitoAuthorizer
+        Authorizers:
+          EpithyStackManagerCognitoAuthorizer:
+            UserPoolArn: { 'Fn::GetAtt' : StackManagerCognitoUserPool.Arn}
+  #Lambda function handler for API gateway
+  StackManagerWebsiteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Handler for API gateway to vend web requests.
+      MemorySize: 256
+      Handler: app.lambda_handler
+      Runtime: python3.7
+      CodeUri: stack_man/
+      Timeout: 5
+      Events:
+        root:
+          Type: Api
+          Properties:
+            RestApiId: {Ref: StackManagerWebsiteApi}
+            Path: /
+            Method: get
+  #Cognito user pool for API gateway auth.
+  StackManagerCognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: EpithyStackManagerCognitoPool
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+      UsernameAttributes:
+        - email
+      Schema:
+        - AttributeDataType: String
+          Name: email
+          Required: false
