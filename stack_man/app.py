@@ -1,6 +1,7 @@
-import json
-import requests
 
+__author__ = "Nathan Ward"
+
+import json
 
 def lambda_handler(event, context):
     """

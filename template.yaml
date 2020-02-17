@@ -18,7 +18,7 @@ Outputs:
     Description: "API Gateway endpoint URL for Prod stage for Stack Manager function"
     Value: {'Fn::Sub': 'https://${StackManagerWebsiteApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/'}
   StackArn:
-    Description: Use this as the stack_arn in your cloud_formation_deployment_stack override.
+    Description: "Use this as the stack_arn in your cloud_formation_deployment_stack override."
     Value: {Ref: 'AWS::StackId'}
 
 Parameters:
@@ -35,20 +35,24 @@ Conditions:
       - prod
 
 Resources:
-  #API gateway configuration. Uses Cognito by default.
+  #API gateway configuration. 
   StackManagerWebsiteApi:
     Type: AWS::Serverless::Api
     Properties:
       StageName: Prod
       Cors: "'*'"
       Auth:
-        DefaultAuthorizer: EpithyStackManagerCognitoAuthorizer
+        DefaultAuthorizer: StackManagerCognitoAuthorizer
         Authorizers:
-          EpithyStackManagerCognitoAuthorizer:
+          StackManagerCognitoAuthorizer:
             UserPoolArn: { 'Fn::GetAtt' : StackManagerCognitoUserPool.Arn}
   #Lambda function handler for API gateway
   StackManagerWebsiteFunction:
     Type: AWS::Serverless::Function
+    DependsOn:
+      - StackManagerCognitoUserPool
+      - StackManagerCognitoUserPoolClient
+      - CreateCognitoDefaultUser
     Properties:
       Description: Handler for API gateway to vend web requests.
       MemorySize: 256
@@ -63,11 +67,18 @@ Resources:
             RestApiId: {Ref: StackManagerWebsiteApi}
             Path: /
             Method: get
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: {Ref: StackManagerCognitoUserPool}
+          COGNITO_CLIENT_ID: {Ref: StackManagerCognitoUserPoolClient}
+          COGNITO_USER_UUID: { 'Fn::GetAtt' : CreateCognitoDefaultUser.CognitoUserId}
   #Cognito user pool for API gateway auth.
   StackManagerCognitoUserPool:
     Type: AWS::Cognito::UserPool
     Properties:
       UserPoolName: EpithyStackManagerCognitoPool
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
       Policies:
         PasswordPolicy:
           MinimumLength: 8
@@ -77,3 +88,122 @@ Resources:
         - AttributeDataType: String
           Name: email
           Required: false
+  #Cognito user pool client. Required for the identity pool.
+  StackManagerCognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: {Ref: StackManagerCognitoUserPool}
+  #Cognito identity pool for Api gateway auth.
+  StackManagerCognitoIdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    DependsOn: StackManagerCognitoUserPoolClient
+    Properties:
+      AllowUnauthenticatedIdentities: false
+      CognitoIdentityProviders:
+        - ClientId: {Ref: StackManagerCognitoUserPoolClient}
+          ProviderName: { 'Fn::GetAtt' : StackManagerCognitoUserPool.ProviderName}
+  #Cognito assume role.
+  StackManagerCognitoRoleAccessPolicy:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          -
+            Effect: 'Allow'
+            Action:
+              - 'sts:AssumeRoleWithWebIdentity'
+            Condition: { "ForAnyValue:StringLike": {"cognito-identity.amazonaws.com:amr": "authenticated" },  "StringEquals": {"cognito-identity.amazonaws.com:aud": {Ref: StackManagerCognitoIdentityPool}}}
+            Principal:
+              Federated:
+                - 'cognito-identity.amazonaws.com'
+      Path: '/'
+      'Policies':
+        -
+          PolicyName: StackManagerCognitoRoleAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              -
+                Effect: 'Allow'
+                Action:
+                  - 'cloudformation:CreateStack'
+                  - 'cloudformation:UpdateStack'
+                  - 'cloudformation:DeleteStack'
+                  - 'cloudformation:CreateUploadBucket'
+                  - 'cloudformation:DescribeStacks'
+                  - 'cloudformation:DescribeStackEvents'
+                  - 'cloudformation:GetTemplateSummary'
+                  - 'cloudformation:ListStacks'
+                  - 'cloudformation:ListStackResources'
+                  - 's3:CreateBucket'
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                  - 'mobileanalytics:PutEvent'
+                  - 'cognito-sync:*'
+                  - 'cognito-identity:*'
+                Resource:  '*'
+  #Attach Cognito policy.
+  IdentityPoolRoleAttachment:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId: {Ref: StackManagerCognitoIdentityPool}
+      Roles: {"authenticated": { 'Fn::GetAtt' : StackManagerCognitoRoleAccessPolicy.Arn}}
+  #Lambda function to auto confirm Cognito users when they're created in Cognito.
+  AutoConfirmUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Handler auto confirming Cognito users.
+      MemorySize: 128
+      Handler: auto_confirm_cognito.lambda_handler
+      Runtime: python3.7
+      CodeUri: stack_man/
+      Timeout: 3
+      Events:
+        cognito:
+          Type: Cognito
+          Properties:
+            Trigger: PreSignUp
+            UserPool: {Ref: StackManagerCognitoUserPool}
+  #Permissions for Cognito to invoke the lambda.
+  ConfirmUserInvocationPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: { 'Fn::GetAtt' : AutoConfirmUserFunction.Arn}
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: { 'Fn::GetAtt' : StackManagerCognitoUserPool.Arn}
+  #Custom resource lambda to create default Cognito user to login.
+  CreateDefaultCognitoUserLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Handler to create default Cognito user.
+      MemorySize: 128
+      Handler: create_default_user.lambda_handler
+      Runtime: python3.7
+      CodeUri: stack_man/
+      Timeout: 5
+      Policies:
+        - Version: '2012-10-17'
+          #Access to create Cognito users.
+          Statement:
+          - Action: ['cognito-idp:SignUp']
+            Effect: Allow
+            Resource: '*'
+        - Version: '2012-10-17'
+          #Access to create SSM secure string for credentials.
+          Statement:
+          - Action: ['ssm:PutParameter']
+            Effect: Allow
+            Resource: 'arn:aws:ssm:*:*:parameter/*'
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_CLIENT_ID: {Ref: StackManagerCognitoUserPoolClient}
+  #Custom resource to create default cognito user.
+  CreateCognitoDefaultUser:
+    Type: 'Custom::CreateCognitoDefaultUser'
+    DependsOn:
+      - CreateDefaultCognitoUserLambda
+      - StackManagerCognitoUserPool
+    Properties:
+      ServiceToken: { 'Fn::GetAtt' : CreateDefaultCognitoUserLambda.Arn}
