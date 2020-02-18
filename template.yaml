@@ -102,7 +102,7 @@ Resources:
       CognitoIdentityProviders:
         - ClientId: {Ref: StackManagerCognitoUserPoolClient}
           ProviderName: { 'Fn::GetAtt' : StackManagerCognitoUserPool.ProviderName}
-  #Cognito assume role.
+  #Cognito identity pool role to assume.
   StackManagerCognitoRoleAccessPolicy:
     Type: AWS::IAM::Role
     Properties:
@@ -127,21 +127,8 @@ Resources:
               -
                 Effect: 'Allow'
                 Action:
-                  - 'cloudformation:CreateStack'
-                  - 'cloudformation:UpdateStack'
-                  - 'cloudformation:DeleteStack'
-                  - 'cloudformation:CreateUploadBucket'
-                  - 'cloudformation:DescribeStacks'
-                  - 'cloudformation:DescribeStackEvents'
-                  - 'cloudformation:GetTemplateSummary'
                   - 'cloudformation:ListStacks'
                   - 'cloudformation:ListStackResources'
-                  - 's3:CreateBucket'
-                  - 's3:GetObject'
-                  - 's3:PutObject'
-                  - 'mobileanalytics:PutEvent'
-                  - 'cognito-sync:*'
-                  - 'cognito-identity:*'
                 Resource:  '*'
   #Attach Cognito policy.
   IdentityPoolRoleAttachment:
@@ -174,6 +161,8 @@ Resources:
       Principal: cognito-idp.amazonaws.com
       SourceArn: { 'Fn::GetAtt' : StackManagerCognitoUserPool.Arn}
   #Custom resource lambda to create default Cognito user to login.
+  #The user is created in a lambda so that a unique password can be assigned
+  #as well as an SSM secure string parameter to hold the credential.
   CreateDefaultCognitoUserLambda:
     Type: AWS::Serverless::Function
     Properties:
