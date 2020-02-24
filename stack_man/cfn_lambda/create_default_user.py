@@ -6,7 +6,7 @@ import secrets
 import string
 import logging
 import boto3
-from cfnresponse import send, SUCCESS, FAILED
+from cfn_lambda.cfnresponse import send, SUCCESS, FAILED
 
 _LOGGER = logging.getLogger()
 _LOGGER.setLevel(logging.INFO)
@@ -49,6 +49,7 @@ def lambda_handler(event, context):
         return
     
     #Put the password into SSM. Uses default kms key.
+    #Overwrite since stack deletion doesn't neccessarily delete the SSM param.
     try:
         ssm_client = boto3.client('ssm')
         ssm_response = ssm_client.put_parameter(

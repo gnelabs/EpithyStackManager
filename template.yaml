@@ -67,6 +67,14 @@ Resources:
             RestApiId: {Ref: StackManagerWebsiteApi}
             Path: /
             Method: get
+        ping:
+          Type: Api
+          Properties:
+            RestApiId: {Ref: StackManagerWebsiteApi}
+            Path: /ping
+            Method: get
+            Auth:
+              Authorizer: 'NONE'
       Environment:
         Variables:
           COGNITO_USER_POOL_ID: {Ref: StackManagerCognitoUserPool}
@@ -142,7 +150,7 @@ Resources:
     Properties:
       Description: Handler auto confirming Cognito users.
       MemorySize: 128
-      Handler: auto_confirm_cognito.lambda_handler
+      Handler: cfn_lambda.auto_confirm_cognito.lambda_handler
       Runtime: python3.7
       CodeUri: stack_man/
       Timeout: 3
@@ -168,7 +176,7 @@ Resources:
     Properties:
       Description: Handler to create default Cognito user.
       MemorySize: 128
-      Handler: create_default_user.lambda_handler
+      Handler: cfn_lambda.create_default_user.lambda_handler
       Runtime: python3.7
       CodeUri: stack_man/
       Timeout: 5
