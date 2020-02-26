@@ -2,20 +2,25 @@
 __author__ = "Nathan Ward"
 
 import json
-import os
+import views
 
 def lambda_handler(event, context):
     """
     Entry point for the serverless website.
+    Routes the request to the appropriate view.
     """
-    env_details = {
-        'COGNITO_CLIENT_ID': os.environ['COGNITO_CLIENT_ID'],
-        'COGNITO_USER_POOL_ID': os.environ['COGNITO_USER_POOL_ID'],
-        'COGNITO_USER_UUID': os.environ['COGNITO_USER_UUID'],
-        'event_info': event,
-        'current_dir': os.listdir(os.getcwd())
-    }
-    return {
-        "statusCode": 200,
-        "body": json.dumps(env_details),
-    }
+    try:
+        if event['path'] in views.REGISTER:
+            return views.REGISTER[event['path']](event, context)
+        else:
+            return {
+               'statusCode': 404,
+               'body': json.dumps({'message': 'Not Found.'}),
+               'headers': {'Content-Type': 'application/json'}
+            }
+    except KeyError:
+        return {
+               'statusCode': 500,
+               'body': json.dumps({'message': 'Unable to process request.'}),
+               'headers': {'Content-Type': 'application/json'}
+            }

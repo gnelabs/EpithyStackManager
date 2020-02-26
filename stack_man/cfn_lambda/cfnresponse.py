@@ -9,13 +9,17 @@ __author__ = "Nathan Ward"
 
 import json
 import requests
-
+from typing import Dict, Any, Optional
 
 SUCCESS = "SUCCESS"
 FAILED = "FAILED"
 
-
-def send(event, context, response_status, reason=None, response_data=None, physical_resource_id=None):
+def send(event: Dict,
+         context: Any,
+         response_status: str,
+         reason: Optional[None] = None,
+         response_data: Optional[None] = None,
+         physical_resource_id: Optional[None] = None) -> bool:
     response_data = response_data or {}
     response_body = json.dumps(
         {
