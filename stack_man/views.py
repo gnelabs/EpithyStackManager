@@ -18,8 +18,8 @@ def register_view(name: str) -> Callable:
     return wrapper
 
 #Relative import of all web (human) lambdas and api lambdas
-from web import *
 from api import *
+from web import *
 
 #Client-side routes. Single-page apps that use react browser router
 #mimick server-side routes, but don't actually go beyond /. This

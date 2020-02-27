@@ -35,7 +35,7 @@ Conditions:
       - prod
 
 Resources:
-  #API gateway configuration. 
+  #API gateway configuration..
   StackManagerWebsiteApi:
     Type: AWS::Serverless::Api
     Properties:
@@ -75,6 +75,18 @@ Resources:
             Method: get
             Auth:
               Authorizer: 'NONE'
+        getProxy:
+          Type: Api
+          Properties:
+            RestApiId: {Ref: StackManagerWebsiteApi}
+            Path: '/{proxy+}'
+            Method: get
+        postProxy:
+          Type: Api
+          Properties:
+            RestApiId: {Ref: StackManagerWebsiteApi}
+            Path: '/{proxy+}'
+            Method: post
       Environment:
         Variables:
           COGNITO_USER_POOL_ID: {Ref: StackManagerCognitoUserPool}
