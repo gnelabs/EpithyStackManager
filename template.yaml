@@ -24,7 +24,9 @@ Outputs:
 Parameters:
   AttachLambdaFunctionToVPC: { Type: String, Default: 'false', AllowedValues: ['true', 'false']}
   Stage: {Type: String, Default: 'prod'}
-  AdminEmail: {Type: String, Default: 'prod'}
+  DefaultLogin: {Type: String, Default: 'admin@example.com'}
+  #Update this whenever a new version of the zip file is included.
+  WebsiteZipBuildVersion: {Type: String, Default: '1.0.0'}
 
 Conditions:
   RunLambdaInVPC:
@@ -92,6 +94,8 @@ Resources:
           COGNITO_USER_POOL_ID: {Ref: StackManagerCognitoUserPool}
           COGNITO_CLIENT_ID: {Ref: StackManagerCognitoUserPoolClient}
           COGNITO_USER_UUID: { 'Fn::GetAtt' : CreateCognitoDefaultUser.CognitoUserId}
+          DEFAULT_ADMIN_USER_LOGIN: {Ref: DefaultLogin}
+          WEBSITE_VERSION: {Ref: WebsiteZipBuildVersion}
   #Cognito user pool for API gateway auth.
   StackManagerCognitoUserPool:
     Type: AWS::Cognito::UserPool
@@ -216,3 +220,37 @@ Resources:
       - StackManagerCognitoUserPool
     Properties:
       ServiceToken: { 'Fn::GetAtt' : CreateDefaultCognitoUserLambda.Arn}
+  #Static website assets bucket.
+  StaticWebAssetsS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: { 'Fn::Join' : [ '-', [ 'epithystatic', { Ref: 'AWS::Region' }, { Ref: 'AWS::AccountId' }, {Ref: Stage}]]}
+  #Lambda function to sync static assets to s3.
+  SyncStaticAssetsS3Lambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Handler to sync static assets to s3.
+      MemorySize: 512
+      Handler: cfn_lambda.deploy_static_files.lambda_handler
+      Runtime: python3.7
+      CodeUri: stack_man/
+      Timeout: 30
+      Policies:
+        - S3CrudPolicy:
+            BucketName:
+              Ref: StaticWebAssetsS3Bucket
+      Environment:
+        Variables:
+          S3_STATIC_ASSETS_BUCKET: {Ref: StaticWebAssetsS3Bucket}
+          WEBSITE_VERSION: {Ref: WebsiteZipBuildVersion}
+  #Custom resource to trigger syncing of static files to s3.
+  #Runs on create, and when WebsiteZipBuildVersion parameter is incremented,
+  #then on update as well.
+  SyncStaticAssetsS3:
+    Type: 'Custom::SyncStaticAssetsS3'
+    DependsOn:
+      - SyncStaticAssetsS3Lambda
+      - StaticWebAssetsS3Bucket
+    Properties:
+      ServiceToken: { 'Fn::GetAtt' : SyncStaticAssetsS3Lambda.Arn}
+      UUID: {Ref: WebsiteZipBuildVersion}
