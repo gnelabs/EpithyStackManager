@@ -12,7 +12,7 @@ _LOGGER = logging.getLogger()
 _LOGGER.setLevel(logging.INFO)
 Boto3ResourceType = NewType('Boto3ResourceType', boto3.resource)
 
-def match_content_type(filename):
+def match_content_type(filename: str) -> str:
     """
     Match file extensions to content-type. A quick lightweight list.
     This is needed so s3 vends the right MIME type when the file is downloaded

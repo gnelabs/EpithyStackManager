@@ -68,15 +68,12 @@ Resources:
       CodeUri: stack_man/
       Timeout: 5
       Events:
-        #Mark all methods unauthenticated for now for testing.
         root:
           Type: Api
           Properties:
             RestApiId: {Ref: StackManagerWebsiteApi}
             Path: /
             Method: get
-            Auth:
-              Authorizer: 'NONE'
         ping:
           Type: Api
           Properties:
@@ -91,16 +88,12 @@ Resources:
             RestApiId: {Ref: StackManagerWebsiteApi}
             Path: '/{proxy+}'
             Method: get
-            Auth:
-              Authorizer: 'NONE'
         postProxy:
           Type: Api
           Properties:
             RestApiId: {Ref: StackManagerWebsiteApi}
             Path: '/{proxy+}'
             Method: post
-            Auth:
-              Authorizer: 'NONE'
       Environment:
         Variables:
           COGNITO_USER_POOL_ID: {Ref: StackManagerCognitoUserPool}
