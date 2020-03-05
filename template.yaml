@@ -42,7 +42,11 @@ Resources:
     Type: AWS::Serverless::Api
     Properties:
       StageName: Prod
-      Cors: "'*'"
+      EndpointConfiguration: REGIONAL
+      Cors:
+        AllowHeaders: "'Content-Type,Location,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+        AllowMethods: "'GET'"
       Auth:
         DefaultAuthorizer: StackManagerCognitoAuthorizer
         Authorizers:
@@ -55,6 +59,7 @@ Resources:
       - StackManagerCognitoUserPool
       - StackManagerCognitoUserPoolClient
       - CreateCognitoDefaultUser
+      - StaticWebAssetsS3Bucket
     Properties:
       Description: Handler for API gateway to vend web requests.
       MemorySize: 256
@@ -63,12 +68,15 @@ Resources:
       CodeUri: stack_man/
       Timeout: 5
       Events:
+        #Mark all methods unauthenticated for now for testing.
         root:
           Type: Api
           Properties:
             RestApiId: {Ref: StackManagerWebsiteApi}
             Path: /
             Method: get
+            Auth:
+              Authorizer: 'NONE'
         ping:
           Type: Api
           Properties:
@@ -83,12 +91,16 @@ Resources:
             RestApiId: {Ref: StackManagerWebsiteApi}
             Path: '/{proxy+}'
             Method: get
+            Auth:
+              Authorizer: 'NONE'
         postProxy:
           Type: Api
           Properties:
             RestApiId: {Ref: StackManagerWebsiteApi}
             Path: '/{proxy+}'
             Method: post
+            Auth:
+              Authorizer: 'NONE'
       Environment:
         Variables:
           COGNITO_USER_POOL_ID: {Ref: StackManagerCognitoUserPool}
@@ -96,6 +108,7 @@ Resources:
           COGNITO_USER_UUID: { 'Fn::GetAtt' : CreateCognitoDefaultUser.CognitoUserId}
           DEFAULT_ADMIN_USER_LOGIN: {Ref: DefaultLogin}
           WEBSITE_VERSION: {Ref: WebsiteZipBuildVersion}
+          STATIC_ASSETS_BUCKET: { 'Fn::GetAtt' : StaticWebAssetsS3Bucket.RegionalDomainName}
   #Cognito user pool for API gateway auth.
   StackManagerCognitoUserPool:
     Type: AWS::Cognito::UserPool
@@ -220,21 +233,23 @@ Resources:
       - StackManagerCognitoUserPool
     Properties:
       ServiceToken: { 'Fn::GetAtt' : CreateDefaultCognitoUserLambda.Arn}
-  #Static website assets bucket.
+  #Static website assets bucket. Has public access enabled.
   StaticWebAssetsS3Bucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: { 'Fn::Join' : [ '-', [ 'epithystatic', { Ref: 'AWS::Region' }, { Ref: 'AWS::AccountId' }, {Ref: Stage}]]}
+      PublicAccessBlockConfiguration:
+        RestrictPublicBuckets: False
   #Lambda function to sync static assets to s3.
   SyncStaticAssetsS3Lambda:
     Type: AWS::Serverless::Function
     Properties:
       Description: Handler to sync static assets to s3.
-      MemorySize: 512
+      MemorySize: 256
       Handler: cfn_lambda.deploy_static_files.lambda_handler
       Runtime: python3.7
       CodeUri: stack_man/
-      Timeout: 30
+      Timeout: 60
       Policies:
         - S3CrudPolicy:
             BucketName:

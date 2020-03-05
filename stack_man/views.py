@@ -1,6 +1,7 @@
 
 __author__ = "Nathan Ward"
 
+import os
 import functools
 from typing import Callable
 
@@ -17,7 +18,29 @@ def register_view(name: str) -> Callable:
         return f
     return wrapper
 
+def lambda_handler(event, context):
+    """
+    Static file redirect to s3.
+    
+    #All objects uploaded are marked as public-read. This gets us direct object URL
+    #which gives us a free cert. Beats paying for cloudfront or ACM.
+    """
+    try:
+        location = 'https://{bucket}{path}'.format(
+            bucket = os.environ['STATIC_ASSETS_BUCKET'],
+            path = event['path']
+        )
+    except KeyError:
+        raise Exception('Missing S3 static website endpoint in env.')
+    
+    return {
+       'statusCode': 301,
+       'body': '',
+       'headers': {'Location': location}
+    }
+
 #Relative import of all web (human) lambdas and api lambdas
+#Api needs to be imported first, it has utilities web depends on.
 from api import *
 from web import *
 
@@ -26,8 +49,8 @@ from web import *
 #list allows API gateway to succeed the request and kick it back to
 #the client react app as part of stackManEnvInfo.currentView. This
 #makes it so bookmarks work with API gateway.
-available_react_views = (
+client_side_react_views = (
     '/'
 )
-for react_view in available_react_views:
+for react_view in client_side_react_views:
     REGISTER[react_view] = react_app.lambda_handler

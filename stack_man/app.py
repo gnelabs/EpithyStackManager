@@ -12,6 +12,8 @@ def lambda_handler(event, context):
     try:
         if event['path'] in views.REGISTER:
             return views.REGISTER[event['path']](event, context)
+        elif '/assets/' in event['path'] or '/static/' in event['path']:
+            return views.lambda_handler(event, context)
         else:
             return {
                'statusCode': 404,

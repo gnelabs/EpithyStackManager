@@ -4,8 +4,6 @@ __author__ = "Nathan Ward"
 import os
 import zipfile
 import logging
-import asyncio
-import concurrent.futures
 from typing import NewType, Any
 import boto3
 from cfn_lambda.cfnresponse import send, SUCCESS, FAILED
@@ -14,31 +12,34 @@ _LOGGER = logging.getLogger()
 _LOGGER.setLevel(logging.INFO)
 Boto3ResourceType = NewType('Boto3ResourceType', boto3.resource)
 
-async def s3_upload_parallel(executor: Any,
-                             bucket: Boto3ResourceType,
-                             files: list,
-                             file_location: str) -> bool:
+def match_content_type(filename):
     """
-    Async function to upload files to s3 in parallel.
+    Match file extensions to content-type. A quick lightweight list.
+    This is needed so s3 vends the right MIME type when the file is downloaded
+    directly from the bucket.
     """
-    loop = asyncio.get_event_loop()
-    tasks = []
-    for file in files:
-        #Hack to make run_in_executor accept params
-        bucket_callable = lambda: bucket.upload_file(
-            Filename = file,
-            Key = file.split(file_location)[1].strip('/')
-        )
-        tasks.append(
-            loop.run_in_executor(
-                executor,
-                bucket_callable
-            )
-        )
+    content_type_match = {
+        'json': 'application/json',
+        'js': 'application/javascript',
+        'css': 'text/css',
+        'map': 'application/json',
+        'svg': 'image/svg+xml',
+        'ttf': 'font/ttf',
+        'woff': 'font/woff',
+        'woff2': 'font/woff2',
+        'eot': 'application/vnd.ms-fontobject',
+        'txt': 'text/plain',
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'ico': 'image/x-icon',
+        'html': 'text/html',
+        'gif': 'image/gif'
+    }
     
-    completed, pending = await asyncio.wait(tasks)
-    results = [t.result() for t in completed]
-    return results
+    try:
+        return content_type_match[filename.rsplit('.', 1)[1]]
+    except KeyError:
+        return 'application/octet-stream'
 
 def lambda_handler(event, context):
     """
@@ -88,24 +89,18 @@ def lambda_handler(event, context):
     s3_resource = boto3.resource('s3')
     destination_bucket = s3_resource.Bucket(bucket_name)
     
-    #Set workers to 10, default botocore max conns is 10 and this is good enough.
-    executor = concurrent.futures.ThreadPoolExecutor(
-        max_workers=10,
-    )
-    loop = asyncio.get_event_loop()
-    #Upload files to s3 in parallel. Why? Because there are tons of little static files
-    #and it takes forever sequentially.
-    s3_upload_results = loop.run_until_complete(
-        s3_upload_parallel(
-            executor = executor,
-            bucket = destination_bucket,
-            files = file_list,
-            file_location = assets_folder
-        )
-    )
-    
-    for upload_result in s3_upload_results:
-        if upload_result:
+    for file in file_list:
+        try:
+            destination_bucket.upload_file(
+                Filename = file,
+                Key = file.split(assets_folder)[1].strip('/'),
+                ExtraArgs={
+                    'ACL': 'public-read',
+                    'ContentType': match_content_type(file)
+                }
+            )
+        except Exception as e:
+            _LOGGER.error('Problem uploading file to s3.')
             send(event, context, FAILED)
             return
     
