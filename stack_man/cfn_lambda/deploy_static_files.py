@@ -80,15 +80,27 @@ def lambda_handler(event, context):
             file_list.append(os.path.join(root, filename))
     
     bucket_name = os.environ['S3_STATIC_ASSETS_BUCKET']
+    s3_resource = boto3.resource('s3')
+    destination_bucket = s3_resource.Bucket(bucket_name)
+    
+    _LOGGER.info('Cleaning out old items from the bucket.')
+    
+    #Truncate the bucket (delete all files in it) before uploading.
+    try:
+        destination_bucket.objects.all().delete()
+    except Exception as e:
+        _LOGGER.error('Problem truncating bucket. {0}'.format(e))
+        send(event, context, FAILED)
+        return
+    
     _LOGGER.info(
         'Copying static assets version {ver} to S3 bucket {buk}.'.format(
             ver = website_version,
             buk = bucket_name
         )
     )
-    s3_resource = boto3.resource('s3')
-    destination_bucket = s3_resource.Bucket(bucket_name)
     
+    #Upload.
     for file in file_list:
         try:
             destination_bucket.upload_file(
@@ -100,7 +112,7 @@ def lambda_handler(event, context):
                 }
             )
         except Exception as e:
-            _LOGGER.error('Problem uploading file to s3.')
+            _LOGGER.error('Problem uploading file to s3. {0}'.format(e))
             send(event, context, FAILED)
             return
     

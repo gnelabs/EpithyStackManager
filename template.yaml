@@ -1,3 +1,5 @@
+#Author: Nathan ward
+
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: SAM-based cloudformation stack manager for pure SAM applications.
@@ -16,7 +18,7 @@ Globals:
 Outputs:
   StackManagerApiEndpoint:
     Description: "API Gateway endpoint URL for Prod stage for Stack Manager function"
-    Value: {'Fn::Sub': 'https://${StackManagerWebsiteApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/'}
+    Value: {'Fn::Sub': 'https://${StackManagerWebsiteHTTPApi}.execute-api.${AWS::Region}.amazonaws.com/'}
   StackArn:
     Description: "Use this as the stack_arn in your cloud_formation_deployment_stack override."
     Value: {Ref: 'AWS::StackId'}
@@ -37,21 +39,36 @@ Conditions:
       - prod
 
 Resources:
-  #API gateway configuration..
-  StackManagerWebsiteApi:
-    Type: AWS::Serverless::Api
+  #API gateway configuration. Using HTTP so I can avoid the forced stage route with REST.
+  StackManagerWebsiteHTTPApi:
+    Type: AWS::Serverless::HttpApi
     Properties:
-      StageName: Prod
-      EndpointConfiguration: REGIONAL
-      Cors:
-        AllowHeaders: "'Content-Type,Location,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
-        AllowOrigin: "'*'"
-        AllowMethods: "'GET'"
+      DefinitionBody:
+        openapi: '3.0'
+        info:
+          title: {'Fn::Sub': '${AWS::StackName}-HttpApi'}
+          description: API definition for stack manager website.
+        paths:
+          /:
+            get:
+              responses: {}
+        x-amazon-apigateway-cors:
+          allowHeaders:
+            - Authorization
+            - Content-Type
+            - Location
+          allowMethods:
+            - '*'
+          maxAge: 43200
       Auth:
-        DefaultAuthorizer: StackManagerCognitoAuthorizer
         Authorizers:
-          StackManagerCognitoAuthorizer:
-            UserPoolArn: { 'Fn::GetAtt' : StackManagerCognitoUserPool.Arn}
+          OpenIdAuthorizer:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              audience:
+                - {Ref: StackManagerCognitoUserPoolClient}
+              issuer: {'Fn::Sub': 'https://cognito-idp.${AWS::Region}.amazonaws.com/${StackManagerCognitoUserPool}'}
+        DefaultAuthorizer: OpenIdAuthorizer
   #Lambda function handler for API gateway
   StackManagerWebsiteFunction:
     Type: AWS::Serverless::Function
@@ -69,29 +86,21 @@ Resources:
       Timeout: 5
       Events:
         root:
-          Type: Api
+          Type: HttpApi
           Properties:
-            RestApiId: {Ref: StackManagerWebsiteApi}
+            ApiId: {Ref: StackManagerWebsiteHTTPApi}
             Path: /
             Method: get
-        ping:
-          Type: Api
-          Properties:
-            RestApiId: {Ref: StackManagerWebsiteApi}
-            Path: /ping
-            Method: get
-            Auth:
-              Authorizer: 'NONE'
         getProxy:
-          Type: Api
+          Type: HttpApi
           Properties:
-            RestApiId: {Ref: StackManagerWebsiteApi}
+            ApiId: {Ref: StackManagerWebsiteHTTPApi}
             Path: '/{proxy+}'
             Method: get
         postProxy:
-          Type: Api
+          Type: HttpApi
           Properties:
-            RestApiId: {Ref: StackManagerWebsiteApi}
+            ApiId: {Ref: StackManagerWebsiteHTTPApi}
             Path: '/{proxy+}'
             Method: post
       Environment:
