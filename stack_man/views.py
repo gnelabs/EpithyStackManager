@@ -36,7 +36,10 @@ def lambda_handler(event, context):
     return {
        'statusCode': 301,
        'body': '',
-       'headers': {'Location': location}
+       'headers': {
+           'Location': location,
+           'Access-Control-Allow-Origin': os.environ['STATIC_ASSETS_BUCKET']
+       }
     }
 
 #Relative import of all web (human) lambdas and api lambdas
