@@ -18,7 +18,7 @@ Globals:
 Outputs:
   StackManagerApiEndpoint:
     Description: "API Gateway endpoint URL for Prod stage for Stack Manager function"
-    Value: {'Fn::Sub': 'https://${StackManagerWebsiteHTTPApi}.execute-api.${AWS::Region}.amazonaws.com/'}
+    Value: {'Fn::Sub': 'https://${StackManagerWebsiteHTTPApi}.execute-api.${AWS::Region}.amazonaws.com/login'}
   StackArn:
     Description: "Use this as the stack_arn in your cloud_formation_deployment_stack override."
     Value: {Ref: 'AWS::StackId'}
@@ -27,8 +27,6 @@ Parameters:
   AttachLambdaFunctionToVPC: { Type: String, Default: 'false', AllowedValues: ['true', 'false']}
   Stage: {Type: String, Default: 'prod'}
   DefaultLogin: {Type: String, Default: 'admin@example.com'}
-  #Update this whenever a new version of the zip file is included.
-  WebsiteZipBuildVersion: {Type: String, Default: '1.0.0'}
 
 Conditions:
   RunLambdaInVPC:
@@ -40,6 +38,8 @@ Conditions:
 
 Resources:
   #API gateway configuration. Using HTTP so I can avoid the forced stage route with REST.
+  #Used as a lambda proxy, so most responses come from lambda. 401's are custom since
+  #API gateway auths using cognito.
   StackManagerWebsiteHTTPApi:
     Type: AWS::Serverless::HttpApi
     Properties:
@@ -91,6 +91,30 @@ Resources:
             ApiId: {Ref: StackManagerWebsiteHTTPApi}
             Path: /
             Method: get
+        loginpage:
+          Type: HttpApi
+          Properties:
+            ApiId: {Ref: StackManagerWebsiteHTTPApi}
+            Path: /login
+            Method: get
+            Auth:
+              Authorizer: NONE
+        staticfiless3:
+          Type: HttpApi
+          Properties:
+            ApiId: {Ref: StackManagerWebsiteHTTPApi}
+            Path: '/static/{proxy+}'
+            Method: get
+            Auth:
+              Authorizer: NONE
+        assetfiless3:
+          Type: HttpApi
+          Properties:
+            ApiId: {Ref: StackManagerWebsiteHTTPApi}
+            Path: '/assets/{proxy+}'
+            Method: get
+            Auth:
+              Authorizer: NONE
         getProxy:
           Type: HttpApi
           Properties:
@@ -107,9 +131,7 @@ Resources:
         Variables:
           COGNITO_USER_POOL_ID: {Ref: StackManagerCognitoUserPool}
           COGNITO_CLIENT_ID: {Ref: StackManagerCognitoUserPoolClient}
-          COGNITO_USER_UUID: { 'Fn::GetAtt' : CreateCognitoDefaultUser.CognitoUserId}
           DEFAULT_ADMIN_USER_LOGIN: {Ref: DefaultLogin}
-          WEBSITE_VERSION: {Ref: WebsiteZipBuildVersion}
           STATIC_ASSETS_BUCKET: { 'Fn::GetAtt' : StaticWebAssetsS3Bucket.RegionalDomainName}
   #Cognito user pool for API gateway auth.
   StackManagerCognitoUserPool:
@@ -266,7 +288,7 @@ Resources:
       Environment:
         Variables:
           S3_STATIC_ASSETS_BUCKET: {Ref: StaticWebAssetsS3Bucket}
-          WEBSITE_VERSION: {Ref: WebsiteZipBuildVersion}
+          WEBSITE_VERSION: "1.0.1"
   #Custom resource to trigger syncing of static files to s3.
   #Runs on create, and when WebsiteZipBuildVersion parameter is incremented,
   #then on update as well.
@@ -277,4 +299,3 @@ Resources:
       - StaticWebAssetsS3Bucket
     Properties:
       ServiceToken: { 'Fn::GetAtt' : SyncStaticAssetsS3Lambda.Arn}
-      UUID: {Ref: WebsiteZipBuildVersion}

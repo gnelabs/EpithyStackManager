@@ -11,12 +11,10 @@ def lambda_handler(event, context):
     """
     try:
         #Normal routes.
-        if event['path'] in views.REGISTER:
-            return views.REGISTER[event['path']](event, context)
+        if event['rawPath'] in views.REGISTER:
+            return views.REGISTER[event['rawPath']](event, context)
         #Static files in s3.
-        elif '/assets/' in event['path'] or '/static/' in event['path']:
-            return views.lambda_handler(event, context)
-        elif '/service-worker' in event['path'] or '/precache-manifest' in event['path'] or '/asset-manifest' in event['path']:
+        elif '/assets/' in event['rawPath'] or '/static/' in event['rawPath']:
             return views.lambda_handler(event, context)
         else:
             return {

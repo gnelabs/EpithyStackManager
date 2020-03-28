@@ -28,7 +28,7 @@ def lambda_handler(event, context):
     try:
         location = 'https://{bucket}{path}'.format(
             bucket = os.environ['STATIC_ASSETS_BUCKET'],
-            path = event['path']
+            path = event['rawPath']
         )
     except KeyError:
         raise Exception('Missing S3 static website endpoint in env.')
@@ -53,7 +53,8 @@ from web import *
 #the client react app as part of stackManEnvInfo.currentView. This
 #makes it so bookmarks work with API gateway.
 client_side_react_views = (
-    '/'
+    '/',
+    '/login'
 )
 for react_view in client_side_react_views:
     REGISTER[react_view] = react_app.lambda_handler

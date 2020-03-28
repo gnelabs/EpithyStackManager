@@ -19,12 +19,11 @@ def load_html_template(event: dict) -> str:
         output = template.render(
             COGNITO_USER_POOL_ID = os.environ['COGNITO_USER_POOL_ID'],
             COGNITO_CLIENT_ID = os.environ['COGNITO_CLIENT_ID'],
-            COGNITO_USER_UUID = os.environ['COGNITO_USER_UUID'],
             awsregion = os.environ['AWS_REGION'],
-            currentview = event['path']
+            currentview = event['rawPath']
         )
     except KeyError:
-        raise Exception('Missing environment/event variables for lambda.')
+        raise Exception('Missing environment/event variables for lambda to load template.')
     
     return output
 
